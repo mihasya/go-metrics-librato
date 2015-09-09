@@ -222,22 +222,18 @@ func fillInDefaultRateAttrs(r *EnableRateSet) *EnableRateSet {
 
 func addRateAttrs(val RateValue, mType interface{}, name string, self *Reporter) Measurement {
 
-	attrs := func() map[string]interface{} {
-		return map[string]interface{}{
-			DisplayUnitsLong:  Operations,
-			DisplayUnitsShort: OperationsShort,
-			DisplayMin:        "0",
-		}
-	}
-
 	measurement := func(m interface{}, r RateValue, name string, suffix string) Measurement {
 
 		return Measurement{
 			Name: fmt.Sprintf("%s.%s", name, suffix),
 			//If m - metrics.Timer and r is Rate1 then assign metrics.Timer.Rate1
-			Value:      reflect.ValueOf(m).MethodByName(string(r)),
-			Period:     int64(self.Interval.Seconds()),
-			Attributes: attrs(),
+			Value:  reflect.ValueOf(m).MethodByName(string(r)).Call([]reflect.Value{})[0].Float(),
+			Period: int64(self.Interval.Seconds()),
+			Attributes: map[string]interface{}{
+				DisplayUnitsLong:  Operations,
+				DisplayUnitsShort: OperationsShort,
+				DisplayMin:        "0",
+			},
 		}
 	}
 
