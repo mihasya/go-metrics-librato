@@ -7,7 +7,7 @@ import (
 	"github.com/rcrowley/go-metrics"
 )
 
-func TestDefaultRateOptions(t *testing.T) {
+func TestDefaultRateAttrs(t *testing.T) {
 	r := metrics.DefaultRegistry
 	p := NewReporter(
 		r,
@@ -44,20 +44,20 @@ func TestDefaultRateOptions(t *testing.T) {
 	}
 
 	if !r1 || !r5 || !r15 {
-		t.Error("Expected Timer Rate function - but got none")
+		t.Error("Expected All Timer Rate functions: Rate1, Rate5 and Rate15 - but got none")
 	}
 
 }
 
-func TestNoRateOptions(t *testing.T) {
+func TestNoRateAttrs(t *testing.T) {
 	r := metrics.DefaultRegistry
 	p := NewReporterWithRateOptions(
 		r,
-		RateOptions{}, // no rates por favor
-		time.Second*5, // interval
-		"",            // account owner email address
-		"",            // Librato API token
-		"",            // source
+		EnableRateSet{}, // no rates por favor
+		time.Second*5,   // interval
+		"",              // account owner email address
+		"",              // Librato API token
+		"",              // source
 		[]float64{0.99, 0.90, 0.50}, // percentiles to send
 		time.Millisecond,            // time unit
 	)
@@ -88,6 +88,47 @@ func TestNoRateOptions(t *testing.T) {
 
 	if r1 || r5 || r15 {
 		t.Error("Expected No Timer Rate function - but got at least one")
+	}
+
+}
+
+func TestOneRateAttr(t *testing.T) {
+	r := metrics.DefaultRegistry
+	p := NewReporterWithRateOptions(
+		r,
+		EnableRateSet{Timer: map[RateValue]bool{Rate1: true}}, // Set Rate1 on Timer
+		time.Second*5,                                         // interval
+		"",                                                    // account owner email address
+		"",                                                    // Librato API token
+		"",                                                    // source
+		[]float64{0.99, 0.90, 0.50}, // percentiles to send
+		time.Millisecond,            // time unit
+	)
+	ts := time.Now()
+	time.Sleep(5 * time.Millisecond)
+	metrics.GetOrRegisterTimer("test", r).UpdateSince(ts)
+	now := time.Now()
+	b, err := p.BuildRequest(now, r)
+	if err != nil {
+		t.Error("Librato initialization failed with: %v", err)
+	}
+
+	r1 := false
+
+	for _, g := range b.Gauges {
+		for k, v := range g {
+			if k == "name" {
+				if v == "test.rate.1min" {
+					if !r1 {
+						r1 = true
+					}
+				}
+			}
+		}
+	}
+
+	if !r1 {
+		t.Error("Expected 1 Timer Rate1 function - but got none")
 	}
 
 }

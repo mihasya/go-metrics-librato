@@ -34,9 +34,9 @@ type rateFn func(r RateValue) interface{}
 
 //Can add other options to not conform to default behavior
 //Doing this allows us to reduce the number of metric streams emitted by default
-type RateOptions struct {
-	Timer map[RateValue]interface{}
-	Meter map[RateValue]interface{}
+type EnableRateSet struct {
+	Timer map[RateValue]bool
+	Meter map[RateValue]bool
 }
 
 type Reporter struct {
@@ -46,7 +46,7 @@ type Reporter struct {
 	Registry        metrics.Registry
 	Percentiles     []float64              // percentiles to report on histogram metrics
 	TimerAttributes map[string]interface{} // units in which timers will be displayed
-	RateAttributes  *RateOptions
+	RateAttributes  *EnableRateSet
 	intervalSec     int64
 }
 
@@ -54,7 +54,7 @@ func NewReporter(r metrics.Registry, d time.Duration, e string, t string, s stri
 	return &Reporter{e, t, s, d, r, p, translateTimerAttributes(u), nil, int64(d / time.Second)}
 }
 
-func NewReporterWithRateOptions(r metrics.Registry, o RateOptions, d time.Duration, e string, t string, s string, p []float64, u time.Duration) *Reporter {
+func NewReporterWithRateOptions(r metrics.Registry, o EnableRateSet, d time.Duration, e string, t string, s string, p []float64, u time.Duration) *Reporter {
 	return &Reporter{e, t, s, d, r, p, translateTimerAttributes(u), &o, int64(d / time.Second)}
 }
 
@@ -110,7 +110,7 @@ func (self *Reporter) BuildRequest(now time.Time, r metrics.Registry) (snapshot 
 	snapshot.Counters = make([]Measurement, 0)
 	histogramGaugeCount := 1 + len(self.Percentiles)
 
-	self.RateAttributes = handleDefaultRateOptions(self.RateAttributes)
+	self.RateAttributes = fillInDefaultRateAttrs(self.RateAttributes)
 
 	r.Each(func(name string, metric interface{}) {
 		measurement := Measurement{}
@@ -160,7 +160,7 @@ func (self *Reporter) BuildRequest(now time.Time, r metrics.Registry) (snapshot 
 			measurement[Value] = float64(m.Count())
 			snapshot.Counters = append(snapshot.Counters, measurement)
 			for val, _ := range self.RateAttributes.Meter {
-				snapshot.Gauges = append(snapshot.Gauges, handleRateOption(val, m, name, self))
+				snapshot.Gauges = append(snapshot.Gauges, addRateAttrs(val, m, name, self))
 			}
 		case metrics.Timer:
 			measurement[Name] = name
@@ -189,7 +189,7 @@ func (self *Reporter) BuildRequest(now time.Time, r metrics.Registry) (snapshot 
 				}
 				snapshot.Gauges = append(snapshot.Gauges, gauges...)
 				for val, _ := range self.RateAttributes.Timer {
-					snapshot.Gauges = append(snapshot.Gauges, handleRateOption(val, m, name, self))
+					snapshot.Gauges = append(snapshot.Gauges, addRateAttrs(val, m, name, self))
 				}
 			}
 		}
@@ -197,17 +197,17 @@ func (self *Reporter) BuildRequest(now time.Time, r metrics.Registry) (snapshot 
 	return
 }
 
-func handleDefaultRateOptions(r *RateOptions) *RateOptions {
-	enableAll := func() map[RateValue]interface{} {
-		return map[RateValue]interface{}{
-			Rate1:  nil,
-			Rate5:  nil,
-			Rate15: nil,
+func fillInDefaultRateAttrs(r *EnableRateSet) *EnableRateSet {
+	enableAll := func() map[RateValue]bool {
+		return map[RateValue]bool{
+			Rate1:  true,
+			Rate5:  true,
+			Rate15: true,
 		}
 	}
 
 	if r == nil {
-		r = &RateOptions{
+		r = &EnableRateSet{
 			Timer: enableAll(),
 			Meter: enableAll(),
 		}
@@ -220,7 +220,7 @@ func handleDefaultRateOptions(r *RateOptions) *RateOptions {
 	return r
 }
 
-func handleRateOption(val RateValue, mType interface{}, name string, self *Reporter) Measurement {
+func addRateAttrs(val RateValue, mType interface{}, name string, self *Reporter) Measurement {
 
 	attrs := func() map[string]interface{} {
 		return map[string]interface{}{
@@ -231,8 +231,10 @@ func handleRateOption(val RateValue, mType interface{}, name string, self *Repor
 	}
 
 	measurement := func(m interface{}, r RateValue, name string, suffix string) Measurement {
+
 		return Measurement{
-			Name:       fmt.Sprintf("%s.%s", name, suffix),
+			Name: fmt.Sprintf("%s.%s", name, suffix),
+			//If m - metrics.Timer and r is Rate1 then assign metrics.Timer.Rate1
 			Value:      reflect.ValueOf(m).MethodByName(string(r)),
 			Period:     int64(self.Interval.Seconds()),
 			Attributes: attrs(),
