@@ -114,7 +114,10 @@ func (self *Reporter) BuildRequest(now time.Time, r metrics.Registry) (snapshot 
 				gauges := make([]Measurement, histogramGaugeCount, histogramGaugeCount)
 				s := m.Sample()
 				measurement[Name] = fmt.Sprintf("%s.%s", name, "hist")
-				measurement[Count] = uint64(s.Count())
+				// For Librato, count must be the number of measurements in this sample. It will show sum/count as the mean.
+				// Sample.Size() gives us this. Sample.Count() gives the total number of measurements ever recorded for the
+				// life of the histogram, which means the Librato graph will trend toward 0 as more measurements are recored.
+				measurement[Count] = uint64(s.Size())
 				measurement[Max] = float64(s.Max())
 				measurement[Min] = float64(s.Min())
 				measurement[Sum] = float64(s.Sum())
