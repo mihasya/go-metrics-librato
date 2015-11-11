@@ -53,11 +53,11 @@ func TestNoRateAttrs(t *testing.T) {
 	r := metrics.DefaultRegistry
 	p := NewReporterWithRateOptions(
 		r,
-		EnableRateSet{}, // no rates por favor
-		time.Second*5,   // interval
-		"",              // account owner email address
-		"",              // Librato API token
-		"",              // source
+		EmptyEnableRateSet(), // no rates por favor
+		time.Second*5,           // interval
+		"",                      // account owner email address
+		"",                      // Librato API token
+		"",                      // source
 		[]float64{0.99, 0.90, 0.50}, // percentiles to send
 		time.Millisecond,            // time unit
 	)
@@ -96,11 +96,11 @@ func TestOneRateAttr(t *testing.T) {
 	r := metrics.DefaultRegistry
 	p := NewReporterWithRateOptions(
 		r,
-		EnableRateSet{Timer: map[RateValue]bool{Rate1: true}}, // Set Rate1 on Timer
-		time.Second*5,                                         // interval
-		"",                                                    // account owner email address
-		"",                                                    // Librato API token
-		"",                                                    // source
+		EnableRateSet{Timer: map[RateValue]bool{Rate1: true}, Meter: map[RateValue]bool{}}, // Set Rate1 on Timer
+		time.Second*5, // interval
+		"",            // account owner email address
+		"",            // Librato API token
+		"",            // source
 		[]float64{0.99, 0.90, 0.50}, // percentiles to send
 		time.Millisecond,            // time unit
 	)

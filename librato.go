@@ -100,6 +100,13 @@ func sumSquaresTimer(t metrics.Timer) float64 {
 	return sumSquares
 }
 
+func EmptyEnableRateSet() EnableRateSet {
+	return EnableRateSet{
+		Timer: map[RateValue]bool{},
+		Meter: map[RateValue]bool{},
+	}
+}
+
 func (self *Reporter) BuildRequest(now time.Time, r metrics.Registry) (snapshot Batch, err error) {
 	snapshot = Batch{
 		// coerce timestamps to a stepping fn so that they line up in Librato graphs
@@ -223,7 +230,7 @@ func fillInDefaultRateAttrs(r *EnableRateSet) *EnableRateSet {
 func addRateAttrs(val RateValue, mType interface{}, name string, self *Reporter) Measurement {
 
 	measurement := func(m interface{}, r RateValue, name string, suffix string) Measurement {
-		
+
 		return Measurement{
 			Name: fmt.Sprintf("%s.%s", name, suffix),
 			//If m - metrics.Timer and r is Rate1 then invoke metrics.Timer.Rate1()
