@@ -1,7 +1,7 @@
 This is a reporter for the [go-metrics](https://github.com/rcrowley/go-metrics)
 library which will post the metrics to [Librato](https://www.librato.com/). It
 was originally part of the `go-metrics` library itself, but has been split off
-to make maintenance of bith the core library and the client easier.
+to make maintenance of both the core library and the client easier.
 
 ### Usage
 
