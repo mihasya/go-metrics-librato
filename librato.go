@@ -49,33 +49,28 @@ func (self *Reporter) Run() {
 	for {
 		select {
 		case now := <-ticker:
-			var metrics Batch
-			var err error
-			if metrics, err = self.BuildRequest(now, self.Registry); err != nil {
-				log.Printf("ERROR constructing librato request body %s", err)
-				break
-			}
-			if err := metricsApi.PostMetrics(metrics); err != nil {
-				log.Printf("ERROR sending metrics to librato %s", err)
-				break
-			}
+			self.post(metricsApi, now)
 
 		case <-self.done:
 			now := time.Now()
-			var metrics Batch
-			var err error
-			if metrics, err = self.BuildRequest(now, self.Registry); err != nil {
-				log.Printf("ERROR constructing librato request body %s", err)
-				return
-			}
-			if err := metricsApi.PostMetrics(metrics); err != nil {
-				log.Printf("ERROR sending metrics to librato %s", err)
-				return
-			}
+			self.post(metricsApi, now)
 			log.Printf("go-metrics-librato: close received, cleaned up in %dms", time.Since(now)/time.Millisecond)
 			return
 		}
 	}
+}
+
+func (self *Reporter) post(metricsApi *LibratoClient, now time.Time) error {
+	metrics, err := self.BuildRequest(now, self.Registry)
+	if err != nil {
+		log.Printf("ERROR constructing librato request body %s", err)
+		return err
+	}
+
+	if err = metricsApi.PostMetrics(metrics); err != nil {
+		log.Printf("ERROR sending metrics to librato %s", err)
+	}
+	return err
 }
 
 // calculate sum of squares from data provided by metrics.Histogram
