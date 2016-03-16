@@ -31,18 +31,17 @@ type Reporter struct {
 	Percentiles     []float64              // percentiles to report on histogram metrics
 	TimerAttributes map[string]interface{} // units in which timers will be displayed
 	intervalSec     int64
-	done            <-chan struct{}
 }
 
-func NewReporter(ctx context.Context, r metrics.Registry, d time.Duration, e string, t string, s string, p []float64, u time.Duration) *Reporter {
-	return &Reporter{e, t, s, d, r, p, translateTimerAttributes(u), int64(d / time.Second), ctx.Done()}
+func NewReporter(r metrics.Registry, d time.Duration, e string, t string, s string, p []float64, u time.Duration) *Reporter {
+	return &Reporter{e, t, s, d, r, p, translateTimerAttributes(u), int64(d / time.Second)}
 }
 
 func Librato(ctx context.Context, r metrics.Registry, d time.Duration, e string, t string, s string, p []float64, u time.Duration) {
-	NewReporter(ctx, r, d, e, t, s, p, u).Run()
+	NewReporter(r, d, e, t, s, p, u).Run(ctx)
 }
 
-func (self *Reporter) Run() {
+func (self *Reporter) Run(ctx context.Context) {
 	ticker := time.Tick(self.Interval)
 	metricsApi := &LibratoClient{self.Email, self.Token}
 
@@ -51,7 +50,7 @@ func (self *Reporter) Run() {
 		case now := <-ticker:
 			self.post(metricsApi, now)
 
-		case <-self.done:
+		case <-ctx.Done():
 			now := time.Now()
 			self.post(metricsApi, now)
 			log.Printf("go-metrics-librato: close received, cleaned up in %dms", time.Since(now)/time.Millisecond)
@@ -67,6 +66,9 @@ func (self *Reporter) post(metricsApi *LibratoClient, now time.Time) error {
 		return err
 	}
 
+	// NOTE: We *don't* want to prematurely cancel open HTTP Requests,
+	// since we may be trying to flush before exit so we don't pass the
+	// context to PostMetrics.
 	if err = metricsApi.PostMetrics(metrics); err != nil {
 		log.Printf("ERROR sending metrics to librato %s", err)
 	}
