@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/rcrowley/go-metrics"
 )
 
@@ -29,20 +31,15 @@ type Reporter struct {
 	Percentiles     []float64              // percentiles to report on histogram metrics
 	TimerAttributes map[string]interface{} // units in which timers will be displayed
 	intervalSec     int64
-	closer          chan struct{}
+	done            <-chan struct{}
 }
 
-func NewReporter(r metrics.Registry, d time.Duration, e string, t string, s string, p []float64, u time.Duration) *Reporter {
-	return &Reporter{e, t, s, d, r, p, translateTimerAttributes(u), int64(d / time.Second), make(chan struct{})}
+func NewReporter(ctx context.Context, r metrics.Registry, d time.Duration, e string, t string, s string, p []float64, u time.Duration) *Reporter {
+	return &Reporter{e, t, s, d, r, p, translateTimerAttributes(u), int64(d / time.Second), ctx.Done()}
 }
 
-func Librato(r metrics.Registry, d time.Duration, e string, t string, s string, p []float64, u time.Duration) {
-	NewReporter(r, d, e, t, s, p, u).Run()
-}
-
-func (self *Reporter) Close() error {
-	close(self.closer)
-	return nil
+func Librato(ctx context.Context, r metrics.Registry, d time.Duration, e string, t string, s string, p []float64, u time.Duration) {
+	NewReporter(ctx, r, d, e, t, s, p, u).Run()
 }
 
 func (self *Reporter) Run() {
@@ -63,7 +60,7 @@ func (self *Reporter) Run() {
 				break
 			}
 
-		case <-self.closer:
+		case <-self.done:
 			now := time.Now()
 			var metrics Batch
 			var err error
