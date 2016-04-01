@@ -129,7 +129,6 @@ func (self *LibratoClient) PostCounters(batch Batch) (err error) {
 	if resp.StatusCode != http.StatusOK {
 		err = fmt.Errorf("Unable to post to Librato: %d %s %s", resp.StatusCode, resp.Status, string(body))
 	}
-	log.Printf("Response from counter data post to Librato: %d %s %s\n", resp.StatusCode, resp.Status, string(body))
 	resp.Body.Close()
 
 	return
@@ -170,7 +169,6 @@ func (self *LibratoClient) PostGauges(batch Batch) (err error) {
 	if resp.StatusCode != http.StatusOK {
 		err = fmt.Errorf("Unable to post to Librato: %d %s %s", resp.StatusCode, resp.Status, string(body))
 	}
-	log.Printf("Response from gauge data post to Librato: %d %s %s\n", resp.StatusCode, resp.Status, string(body))
 	resp.Body.Close()
 
 	return
