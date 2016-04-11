@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"time"
 
+	"golang.org/x/net/context"
+
 	"github.com/rcrowley/go-metrics"
 )
 
@@ -35,25 +37,42 @@ func NewReporter(r metrics.Registry, d time.Duration, e string, t string, s stri
 	return &Reporter{e, t, s, d, r, p, translateTimerAttributes(u), int64(d / time.Second)}
 }
 
-func Librato(r metrics.Registry, d time.Duration, e string, t string, s string, p []float64, u time.Duration) {
-	NewReporter(r, d, e, t, s, p, u).Run()
+func Librato(ctx context.Context, r metrics.Registry, d time.Duration, e string, t string, s string, p []float64, u time.Duration) {
+	NewReporter(r, d, e, t, s, p, u).Run(ctx)
 }
 
-func (self *Reporter) Run() {
+func (self *Reporter) Run(ctx context.Context) {
 	ticker := time.Tick(self.Interval)
 	metricsApi := &LibratoClient{self.Email, self.Token}
-	for now := range ticker {
-		var metrics Batch
-		var err error
-		if metrics, err = self.BuildRequest(now, self.Registry); err != nil {
-			log.Printf("ERROR constructing librato request body %s", err)
-			continue
-		}
-		if err := metricsApi.PostMetrics(metrics); err != nil {
-			log.Printf("ERROR sending metrics to librato %s", err)
-			continue
+
+	for {
+		select {
+		case now := <-ticker:
+			self.post(metricsApi, now)
+
+		case <-ctx.Done():
+			now := time.Now()
+			self.post(metricsApi, now)
+			log.Printf("go-metrics-librato: close received, cleaned up in %dms", time.Since(now)/time.Millisecond)
+			return
 		}
 	}
+}
+
+func (self *Reporter) post(metricsApi *LibratoClient, now time.Time) error {
+	metrics, err := self.BuildRequest(now, self.Registry)
+	if err != nil {
+		log.Printf("ERROR constructing librato request body %s", err)
+		return err
+	}
+
+	// NOTE: We *don't* want to prematurely cancel open HTTP Requests,
+	// since we may be trying to flush before exit so we don't pass the
+	// context to PostMetrics.
+	if err = metricsApi.PostMetrics(metrics); err != nil {
+		log.Printf("ERROR sending metrics to librato %s", err)
+	}
+	return err
 }
 
 // calculate sum of squares from data provided by metrics.Histogram
@@ -131,6 +150,7 @@ func (self *Reporter) BuildRequest(now time.Time, r metrics.Registry) (snapshot 
 					}
 				}
 				snapshot.Gauges = append(snapshot.Gauges, gauges...)
+				s.Clear()
 			}
 		case metrics.Meter:
 			measurement[Name] = name
