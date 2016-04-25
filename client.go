@@ -161,6 +161,7 @@ func (self *LibratoClient) PostGauges(batch Batch) (err error) {
 		log.Printf("Error Return. %s\n", err)
 		return
 	}
+	defer resp.Body.Close()
 
 	var body []byte
 	if body, err = ioutil.ReadAll(resp.Body); err != nil {
