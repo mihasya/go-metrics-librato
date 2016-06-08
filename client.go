@@ -116,6 +116,7 @@ func (self *LibratoClient) PostCounters(batch Batch) (err error) {
 
 	req.Header.Set("Content-Type", "application/json")
 	req.SetBasicAuth(self.Email, self.Token)
+	req.Close = true
 
 	if resp, err = http.DefaultClient.Do(req); err != nil {
 		log.Printf("Error Return. %s\n", err)
@@ -156,6 +157,7 @@ func (self *LibratoClient) PostGauges(batch Batch) (err error) {
 
 	req.Header.Set("Content-Type", "application/json")
 	req.SetBasicAuth(self.Email, self.Token)
+	req.Close = true
 
 	if resp, err = http.DefaultClient.Do(req); err != nil {
 		log.Printf("Error Return. %s\n", err)
