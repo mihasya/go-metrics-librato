@@ -9,12 +9,12 @@ to make maintenance of both the core library and the client easier.
 import "github.com/mihasya/go-metrics-librato"
 
 go librato.Librato(metrics.DefaultRegistry,
-    10e9,                  // interval
+    1 * time.Minute,       // interval
     "example@example.com", // account owner email address
     "token",               // Librato API token
     "hostname",            // source
     []float64{0.95},       // percentiles to send
-    time.Millisecond,      // time unit
+    time.Minute,           // time unit
 )
 ```
 
