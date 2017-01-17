@@ -23,6 +23,7 @@ func translateTimerAttributes(d time.Duration) (attrs map[string]interface{}) {
 
 type Reporter struct {
 	Email, Token    string
+	Namespace       string
 	Source          string
 	Interval        time.Duration
 	Registry        metrics.Registry
@@ -31,12 +32,12 @@ type Reporter struct {
 	intervalSec     int64
 }
 
-func NewReporter(r metrics.Registry, d time.Duration, e string, t string, s string, p []float64, u time.Duration) *Reporter {
-	return &Reporter{e, t, s, d, r, p, translateTimerAttributes(u), int64(d / time.Second)}
+func NewReporter(r metrics.Registry, d time.Duration, e string, t string, n string, s string, p []float64, u time.Duration) *Reporter {
+	return &Reporter{e, t, n, s, d, r, p, translateTimerAttributes(u), int64(d / time.Second)}
 }
 
-func Librato(r metrics.Registry, d time.Duration, e string, t string, s string, p []float64, u time.Duration) {
-	NewReporter(r, d, e, t, s, p, u).Run()
+func Librato(r metrics.Registry, d time.Duration, e string, t string, n string, s string, p []float64, u time.Duration) {
+	NewReporter(r, d, e, t, n, s, p, u).Run()
 }
 
 func (self *Reporter) Run() {
@@ -82,11 +83,14 @@ func (self *Reporter) BuildRequest(now time.Time, r metrics.Registry) (snapshot 
 		// coerce timestamps to a stepping fn so that they line up in Librato graphs
 		MeasureTime: (now.Unix() / self.intervalSec) * self.intervalSec,
 		Source:      self.Source,
+		Gauges:      make([]Measurement, 0),
+		Counters:    make([]Measurement, 0),
 	}
-	snapshot.Gauges = make([]Measurement, 0)
-	snapshot.Counters = make([]Measurement, 0)
 	histogramGaugeCount := 1 + len(self.Percentiles)
 	r.Each(func(name string, metric interface{}) {
+		if self.Namespace != "" {
+			name = fmt.Sprintf("%s.%s", self.Namespace, name)
+		}
 		measurement := Measurement{}
 		measurement[Period] = self.Interval.Seconds()
 		switch m := metric.(type) {

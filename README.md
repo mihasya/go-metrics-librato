@@ -12,6 +12,7 @@ go librato.Librato(metrics.DefaultRegistry,
     10e9,                  // interval
     "example@example.com", // account owner email address
     "token",               // Librato API token
+    "app",                 // namespace
     "hostname",            // source
     []float64{0.95},       // percentiles to send
     time.Millisecond,      // time unit
