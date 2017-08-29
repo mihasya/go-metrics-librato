@@ -65,6 +65,12 @@ type Batch struct {
 	Source      string        `json:"source"`
 }
 
+var client = http.DefaultClient
+
+func SetHTTPClient(c *http.Client) {
+	client = c
+}
+
 func (self *LibratoClient) PostMetrics(batch Batch) (err error) {
 	var (
 		js   []byte
@@ -87,7 +93,7 @@ func (self *LibratoClient) PostMetrics(batch Batch) (err error) {
 	req.Header.Set("Content-Type", "application/json")
 	req.SetBasicAuth(self.Email, self.Token)
 
-	if resp, err = http.DefaultClient.Do(req); err != nil {
+	if resp, err = client.Do(req); err != nil {
 		return
 	}
 	defer resp.Body.Close()
