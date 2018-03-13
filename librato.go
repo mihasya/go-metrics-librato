@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"reflect"
 	"regexp"
 	"time"
 
@@ -21,6 +22,23 @@ func translateTimerAttributes(d time.Duration) (attrs map[string]interface{}) {
 	return
 }
 
+type RateValue string
+
+const (
+	Rate1  RateValue = "Rate1"
+	Rate5  RateValue = "Rate5"
+	Rate15 RateValue = "Rate15"
+)
+
+type rateFn func(r RateValue) interface{}
+
+//Can add other options to not conform to default behavior
+//Doing this allows us to reduce the number of metric streams emitted by default
+type EnableRateSet struct {
+	Timer map[RateValue]bool
+	Meter map[RateValue]bool
+}
+
 type Reporter struct {
 	Email, Token    string
 	Source          string
@@ -28,11 +46,16 @@ type Reporter struct {
 	Registry        metrics.Registry
 	Percentiles     []float64              // percentiles to report on histogram metrics
 	TimerAttributes map[string]interface{} // units in which timers will be displayed
+	RateAttributes  *EnableRateSet
 	intervalSec     int64
 }
 
 func NewReporter(r metrics.Registry, d time.Duration, e string, t string, s string, p []float64, u time.Duration) *Reporter {
-	return &Reporter{e, t, s, d, r, p, translateTimerAttributes(u), int64(d / time.Second)}
+	return &Reporter{e, t, s, d, r, p, translateTimerAttributes(u), nil, int64(d / time.Second)}
+}
+
+func NewReporterWithRateOptions(r metrics.Registry, o EnableRateSet, d time.Duration, e string, t string, s string, p []float64, u time.Duration) *Reporter {
+	return &Reporter{e, t, s, d, r, p, translateTimerAttributes(u), &o, int64(d / time.Second)}
 }
 
 func Librato(r metrics.Registry, d time.Duration, e string, t string, s string, p []float64, u time.Duration) {
@@ -77,6 +100,13 @@ func sumSquaresTimer(t metrics.Timer) float64 {
 	return sumSquares
 }
 
+func EmptyEnableRateSet() EnableRateSet {
+	return EnableRateSet{
+		Timer: map[RateValue]bool{},
+		Meter: map[RateValue]bool{},
+	}
+}
+
 func (self *Reporter) BuildRequest(now time.Time, r metrics.Registry) (snapshot Batch, err error) {
 	snapshot = Batch{
 		// coerce timestamps to a stepping fn so that they line up in Librato graphs
@@ -86,6 +116,9 @@ func (self *Reporter) BuildRequest(now time.Time, r metrics.Registry) (snapshot 
 	snapshot.Gauges = make([]Measurement, 0)
 	snapshot.Counters = make([]Measurement, 0)
 	histogramGaugeCount := 1 + len(self.Percentiles)
+
+	self.RateAttributes = fillInDefaultRateAttrs(self.RateAttributes)
+
 	r.Each(func(name string, metric interface{}) {
 		measurement := Measurement{}
 		measurement[Period] = self.Interval.Seconds()
@@ -136,38 +169,9 @@ func (self *Reporter) BuildRequest(now time.Time, r metrics.Registry) (snapshot 
 			measurement[Name] = name
 			measurement[Value] = float64(m.Count())
 			snapshot.Counters = append(snapshot.Counters, measurement)
-			snapshot.Gauges = append(snapshot.Gauges,
-				Measurement{
-					Name:   fmt.Sprintf("%s.%s", name, "1min"),
-					Value:  m.Rate1(),
-					Period: int64(self.Interval.Seconds()),
-					Attributes: map[string]interface{}{
-						DisplayUnitsLong:  Operations,
-						DisplayUnitsShort: OperationsShort,
-						DisplayMin:        "0",
-					},
-				},
-				Measurement{
-					Name:   fmt.Sprintf("%s.%s", name, "5min"),
-					Value:  m.Rate5(),
-					Period: int64(self.Interval.Seconds()),
-					Attributes: map[string]interface{}{
-						DisplayUnitsLong:  Operations,
-						DisplayUnitsShort: OperationsShort,
-						DisplayMin:        "0",
-					},
-				},
-				Measurement{
-					Name:   fmt.Sprintf("%s.%s", name, "15min"),
-					Value:  m.Rate15(),
-					Period: int64(self.Interval.Seconds()),
-					Attributes: map[string]interface{}{
-						DisplayUnitsLong:  Operations,
-						DisplayUnitsShort: OperationsShort,
-						DisplayMin:        "0",
-					},
-				},
-			)
+			for val, _ := range self.RateAttributes.Meter {
+				snapshot.Gauges = append(snapshot.Gauges, addRateAttrs(val, m, name, self))
+			}
 		case metrics.Timer:
 			measurement[Name] = name
 			measurement[Value] = float64(m.Count())
@@ -194,40 +198,63 @@ func (self *Reporter) BuildRequest(now time.Time, r metrics.Registry) (snapshot 
 					}
 				}
 				snapshot.Gauges = append(snapshot.Gauges, gauges...)
-				snapshot.Gauges = append(snapshot.Gauges,
-					Measurement{
-						Name:   fmt.Sprintf("%s.%s", name, "rate.1min"),
-						Value:  m.Rate1(),
-						Period: int64(self.Interval.Seconds()),
-						Attributes: map[string]interface{}{
-							DisplayUnitsLong:  Operations,
-							DisplayUnitsShort: OperationsShort,
-							DisplayMin:        "0",
-						},
-					},
-					Measurement{
-						Name:   fmt.Sprintf("%s.%s", name, "rate.5min"),
-						Value:  m.Rate5(),
-						Period: int64(self.Interval.Seconds()),
-						Attributes: map[string]interface{}{
-							DisplayUnitsLong:  Operations,
-							DisplayUnitsShort: OperationsShort,
-							DisplayMin:        "0",
-						},
-					},
-					Measurement{
-						Name:   fmt.Sprintf("%s.%s", name, "rate.15min"),
-						Value:  m.Rate15(),
-						Period: int64(self.Interval.Seconds()),
-						Attributes: map[string]interface{}{
-							DisplayUnitsLong:  Operations,
-							DisplayUnitsShort: OperationsShort,
-							DisplayMin:        "0",
-						},
-					},
-				)
+				for val, _ := range self.RateAttributes.Timer {
+					snapshot.Gauges = append(snapshot.Gauges, addRateAttrs(val, m, name, self))
+				}
 			}
 		}
 	})
 	return
+}
+
+func fillInDefaultRateAttrs(r *EnableRateSet) *EnableRateSet {
+	enableAll := func() map[RateValue]bool {
+		return map[RateValue]bool{
+			Rate1:  true,
+			Rate5:  true,
+			Rate15: true,
+		}
+	}
+
+	if r == nil {
+		r = &EnableRateSet{
+			Timer: enableAll(),
+			Meter: enableAll(),
+		}
+	} else if r.Meter == nil {
+		r.Meter = enableAll()
+	} else if r.Timer == nil {
+		r.Timer = enableAll()
+	}
+
+	return r
+}
+
+func addRateAttrs(val RateValue, mType interface{}, name string, self *Reporter) Measurement {
+
+	measurement := func(m interface{}, r RateValue, name string, suffix string) Measurement {
+
+		return Measurement{
+			Name: fmt.Sprintf("%s.%s", name, suffix),
+			//If m - metrics.Timer and r is Rate1 then invoke metrics.Timer.Rate1()
+			Value:  reflect.ValueOf(m).MethodByName(string(r)).Call([]reflect.Value{})[0].Float(),
+			Period: int64(self.Interval.Seconds()),
+			Attributes: map[string]interface{}{
+				DisplayUnitsLong:  Operations,
+				DisplayUnitsShort: OperationsShort,
+				DisplayMin:        "0",
+			},
+		}
+	}
+
+	switch val {
+	case Rate1:
+		return measurement(mType, Rate1, name, "rate.1min")
+	case Rate5:
+		return measurement(mType, Rate5, name, "rate.5min")
+	case Rate15:
+		return measurement(mType, Rate15, name, "rate.15min")
+	}
+
+	return nil
 }
