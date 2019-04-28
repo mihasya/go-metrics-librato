@@ -7,6 +7,7 @@ to make maintenance of both the core library and the client easier.
 
 ```go
 import "github.com/mihasya/go-metrics-librato"
+import "github.com/rcrowley/go-metrics"
 
 go librato.Librato(metrics.DefaultRegistry,
     10e9,                  // interval
@@ -16,6 +17,16 @@ go librato.Librato(metrics.DefaultRegistry,
     []float64{0.95},       // percentiles to send
     time.Millisecond,      // time unit
 )
+
+func Increment(name string) {
+	m := metrics.GetOrRegisterMeter(name, nil)
+	m.Mark(1)
+}
+
+func Time(name string, value time.Duration) {
+	t := metrics.GetOrRegisterTimer(name, nil)
+	t.Update(value)
+}
 ```
 
 ### Migrating from `rcrowley/go-metrics` implementation
